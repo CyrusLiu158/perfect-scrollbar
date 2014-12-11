@@ -18,11 +18,7 @@
   'use strict';
 
   function getInt(x) {
-    if (typeof x === 'string') {
-      return parseInt(x, 10);
-    } else {
-      return ~~x;
-    }
+    return x << 0;
   }
 
   var defaultSettings = {
@@ -126,6 +122,55 @@
       var railBorderYWidth = getInt($scrollbarYRail.css('borderTopWidth')) + getInt($scrollbarYRail.css('borderBottomWidth'));
       var railYMarginHeight = getInt($scrollbarYRail.css('marginTop')) + getInt($scrollbarYRail.css('marginBottom'));
       var railYHeight;
+      var curScrollTop, curScrollLeft;
+
+      /**
+       * These make it possible to avoid reading the state of scrollTop which would normally
+       * cause a repaint (or maybe just in IE).
+       * newVal is clamped to possible values similar to setting the property directly.
+       * The defer option causes scrollTop to not even be set on the DOM. Instead, you call
+       * commitScrollPos() which will cause deferred values to be set on the DOM.
+       */
+      function cachedScrollTop(newVal, defer) {
+        if (arguments.length) {
+          if (newVal > contentHeight - containerHeight) {
+            newVal = contentHeight - containerHeight;
+          }
+          if (newVal < 0) {
+            newVal = 0;
+          }
+          if (!defer) {
+            $this.scrollTop(newVal);
+          }
+          curScrollTop = newVal;
+        } else if (typeof curScrollTop === 'undefined') {
+          curScrollTop = $this.scrollTop();
+        }
+        return curScrollTop;
+      }
+
+      function cachedScrollLeft(newVal, defer) {
+        if (arguments.length) {
+          if (newVal > contentWidth - containerWidth) {
+            newVal = contentWidth - containerWidth;
+          }
+          if (newVal < 0) {
+            newVal = 0;
+          }
+          if (!defer) {
+            $this.scrollLeft(newVal);
+          }
+          curScrollLeft = newVal;
+        } else if (typeof curScrollLeft === 'undefined') {
+          curScrollLeft = $this.scrollLeft();
+        }
+        return curScrollLeft;
+      }
+
+      function commitScrollPos() {
+        $this.scrollLeft(cachedScrollLeft());
+        $this.scrollTop(cachedScrollTop());
+      }
 
       function updateScrollTop(currentTop, deltaY) {
         var newTop = currentTop + deltaY;
@@ -140,7 +185,7 @@
         }
 
         var scrollTop = getInt(scrollbarYTop * (contentHeight - containerHeight) / (containerHeight - scrollbarYHeight));
-        $this.scrollTop(scrollTop);
+        cachedScrollTop(scrollTop);
       }
 
       function updateScrollLeft(currentLeft, deltaX) {
@@ -156,7 +201,7 @@
         }
 
         var scrollLeft = getInt(scrollbarXLeft * (contentWidth - containerWidth) / (containerWidth - scrollbarXWidth));
-        $this.scrollLeft(scrollLeft);
+        cachedScrollLeft(scrollLeft);
       }
 
       function getThumbSize(thumbSize) {
@@ -172,30 +217,30 @@
       function updateCss() {
         var xRailOffset = {width: railXWidth};
         if (isRtl) {
-          xRailOffset.left = $this.scrollLeft() + containerWidth - contentWidth;
+          xRailOffset.left = cachedScrollLeft() + containerWidth - contentWidth;
         } else {
-          xRailOffset.left = $this.scrollLeft();
+          xRailOffset.left = cachedScrollLeft();
         }
         if (isScrollbarXUsingBottom) {
-          xRailOffset.bottom = scrollbarXBottom - $this.scrollTop();
+          xRailOffset.bottom = scrollbarXBottom - cachedScrollTop();
         } else {
-          xRailOffset.top = scrollbarXTop + $this.scrollTop();
+          xRailOffset.top = scrollbarXTop + cachedScrollTop();
         }
         $scrollbarXRail.css(xRailOffset);
 
-        var railYOffset = {top: $this.scrollTop(), height: railYHeight};
+        var railYOffset = {top: cachedScrollTop(), height: railYHeight};
 
         if (isScrollbarYUsingRight) {
           if (isRtl) {
-            railYOffset.right = contentWidth - $this.scrollLeft() - scrollbarYRight - $scrollbarY.outerWidth();
+            railYOffset.right = contentWidth - cachedScrollLeft() - scrollbarYRight - $scrollbarY.outerWidth();
           } else {
-            railYOffset.right = scrollbarYRight - $this.scrollLeft();
+            railYOffset.right = scrollbarYRight - cachedScrollLeft();
           }
         } else {
           if (isRtl) {
-            railYOffset.left = $this.scrollLeft() + containerWidth * 2 - contentWidth - scrollbarYLeft - $scrollbarY.outerWidth();
+            railYOffset.left = cachedScrollLeft() + containerWidth * 2 - contentWidth - scrollbarYLeft - $scrollbarY.outerWidth();
           } else {
-            railYOffset.left = scrollbarYLeft + $this.scrollLeft();
+            railYOffset.left = scrollbarYLeft + cachedScrollLeft();
           }
         }
         $scrollbarYRail.css(railYOffset);
@@ -206,8 +251,8 @@
 
       function updateGeometry() {
         // Hide scrollbars not to affect scrollWidth and scrollHeight
-        $this.removeClass('ps-active-x');
-        $this.removeClass('ps-active-y');
+        //$this.removeClass('ps-active-x');
+        //$this.removeClass('ps-active-y');
 
         containerWidth = settings.includePadding ? $this.innerWidth() : $this.width();
         containerHeight = settings.includePadding ? $this.innerHeight() : $this.height();
@@ -218,24 +263,24 @@
           scrollbarXActive = true;
           railXWidth = containerWidth - railXMarginWidth;
           scrollbarXWidth = getThumbSize(getInt(railXWidth * containerWidth / contentWidth));
-          scrollbarXLeft = getInt($this.scrollLeft() * (railXWidth - scrollbarXWidth) / (contentWidth - containerWidth));
+          scrollbarXLeft = getInt(cachedScrollLeft() * (railXWidth - scrollbarXWidth) / (contentWidth - containerWidth));
         } else {
           scrollbarXActive = false;
           scrollbarXWidth = 0;
           scrollbarXLeft = 0;
-          $this.scrollLeft(0);
+          //cachedScrollLeft(0);
         }
 
         if (!settings.suppressScrollY && containerHeight + settings.scrollYMarginOffset < contentHeight) {
           scrollbarYActive = true;
           railYHeight = containerHeight - railYMarginHeight;
           scrollbarYHeight = getThumbSize(getInt(railYHeight * containerHeight / contentHeight));
-          scrollbarYTop = getInt($this.scrollTop() * (railYHeight - scrollbarYHeight) / (contentHeight - containerHeight));
+          scrollbarYTop = getInt(cachedScrollTop() * (railYHeight - scrollbarYHeight) / (contentHeight - containerHeight));
         } else {
           scrollbarYActive = false;
           scrollbarYHeight = 0;
           scrollbarYTop = 0;
-          $this.scrollTop(0);
+          cachedScrollTop(0);
         }
 
         if (scrollbarXLeft >= railXWidth - scrollbarXWidth) {
@@ -249,9 +294,13 @@
 
         if (scrollbarXActive) {
           $this.addClass('ps-active-x');
+        } else {
+          $this.removeClass('ps-active-x');
         }
         if (scrollbarYActive) {
           $this.addClass('ps-active-y');
+        } else {
+          $this.removeClass('ps-active-y');
         }
       }
 
@@ -260,8 +309,9 @@
         var currentPageX;
 
         var mouseMoveHandler = function (e) {
-          updateScrollLeft(currentLeft, e.pageX - currentPageX);
+          updateScrollLeft(currentLeft, e.pageX - currentPageX, true);
           updateGeometry();
+          commitScrollPos();
           e.stopPropagation();
           e.preventDefault();
         };
@@ -292,8 +342,9 @@
         var currentPageY;
 
         var mouseMoveHandler = function (e) {
-          updateScrollTop(currentTop, e.pageY - currentPageY);
+          updateScrollTop(currentTop, e.pageY - currentPageY, true);
           updateGeometry();
+          commitScrollPos();
           e.stopPropagation();
           e.preventDefault();
         };
@@ -320,7 +371,7 @@
       }
 
       function shouldPreventWheel(deltaX, deltaY) {
-        var scrollTop = $this.scrollTop();
+        var scrollTop = cachedScrollTop();
         if (deltaX === 0) {
           if (!scrollbarYActive) {
             return false;
@@ -330,7 +381,7 @@
           }
         }
 
-        var scrollLeft = $this.scrollLeft();
+        var scrollLeft = cachedScrollLeft();
         if (deltaY === 0) {
           if (!scrollbarXActive) {
             return false;
@@ -343,8 +394,8 @@
       }
 
       function shouldPreventSwipe(deltaX, deltaY) {
-        var scrollTop = $this.scrollTop();
-        var scrollLeft = $this.scrollLeft();
+        var scrollTop = cachedScrollTop();
+        var scrollLeft = cachedScrollLeft();
         var magnitudeX = Math.abs(deltaX);
         var magnitudeY = Math.abs(deltaY);
 
@@ -412,29 +463,31 @@
           if (!settings.useBothWheelAxes) {
             // deltaX will only be used for horizontal scrolling and deltaY will
             // only be used for vertical scrolling - this is the default
-            $this.scrollTop($this.scrollTop() - (deltaY * settings.wheelSpeed));
-            $this.scrollLeft($this.scrollLeft() + (deltaX * settings.wheelSpeed));
+            cachedScrollTop(cachedScrollTop() - (deltaY * settings.wheelSpeed), true);
+            cachedScrollLeft(cachedScrollLeft() + (deltaX * settings.wheelSpeed), true);
           } else if (scrollbarYActive && !scrollbarXActive) {
             // only vertical scrollbar is active and useBothWheelAxes option is
             // active, so let's scroll vertical bar using both mouse wheel axes
             if (deltaY) {
-              $this.scrollTop($this.scrollTop() - (deltaY * settings.wheelSpeed));
+              cachedScrollTop(cachedScrollTop() - (deltaY * settings.wheelSpeed), true);
             } else {
-              $this.scrollTop($this.scrollTop() + (deltaX * settings.wheelSpeed));
+              cachedScrollTop(cachedScrollTop() + (deltaX * settings.wheelSpeed), true);
             }
             shouldPrevent = true;
           } else if (scrollbarXActive && !scrollbarYActive) {
             // useBothWheelAxes and only horizontal bar is active, so use both
             // wheel axes for horizontal bar
             if (deltaX) {
-              $this.scrollLeft($this.scrollLeft() + (deltaX * settings.wheelSpeed));
+              cachedScrollLeft(cachedScrollLeft() + (deltaX * settings.wheelSpeed), true);
             } else {
-              $this.scrollLeft($this.scrollLeft() - (deltaY * settings.wheelSpeed));
+              cachedScrollLeft(cachedScrollLeft() - (deltaY * settings.wheelSpeed), true);
             }
             shouldPrevent = true;
           }
 
           updateGeometry();
+
+          commitScrollPos();
 
           shouldPrevent = (shouldPrevent || shouldPreventWheel(deltaX, deltaY));
           if (shouldPrevent) {
@@ -510,7 +563,7 @@
             break;
           case 36: // home
             if (e.ctrlKey) {
-              deltaY = $this.scrollTop();
+              deltaY = cachedScrollTop();
             } else {
               deltaY = containerHeight;
             }
@@ -519,8 +572,11 @@
             return;
           }
 
-          $this.scrollTop($this.scrollTop() - deltaY);
-          $this.scrollLeft($this.scrollLeft() + deltaX);
+          cachedScrollTop(cachedScrollTop() - deltaY, true);
+          cachedScrollLeft(cachedScrollLeft() + deltaX, true);
+
+          updateGeometry();
+          commitScrollPos();
 
           shouldPrevent = shouldPreventWheel(deltaX, deltaY);
           if (shouldPrevent) {
@@ -545,7 +601,7 @@
             positionRatio = 1;
           }
 
-          $this.scrollTop((contentHeight - containerHeight) * positionRatio);
+          cachedScrollTop((contentHeight - containerHeight) * positionRatio);
         });
 
         $scrollbarX.bind(eventClass('click'), stopPropagation);
@@ -561,7 +617,7 @@
             positionRatio = 1;
           }
 
-          $this.scrollLeft((contentWidth - containerWidth) * positionRatio);
+          cachedScrollLeft((contentWidth - containerWidth) * positionRatio);
         });
       }
 
@@ -586,8 +642,8 @@
                 return;
               }
 
-              $this.scrollTop($this.scrollTop() + scrollDiff.top);
-              $this.scrollLeft($this.scrollLeft() + scrollDiff.left);
+              cachedScrollTop(cachedScrollTop() + scrollDiff.top);
+              cachedScrollLeft(cachedScrollLeft() + scrollDiff.left);
               updateGeometry();
             }, 50); // every .1 sec
           }
@@ -667,10 +723,11 @@
 
       function bindTouchHandler(supportsTouch, supportsIePointer) {
         function applyTouchMove(differenceX, differenceY) {
-          $this.scrollTop($this.scrollTop() - differenceY);
-          $this.scrollLeft($this.scrollLeft() - differenceX);
+          cachedScrollTop(cachedScrollTop() - differenceY, true);
+          cachedScrollLeft(cachedScrollLeft() - differenceX, true);
 
           updateGeometry();
+          commitScrollPos();
         }
 
         var startOffset = {};
@@ -801,7 +858,8 @@
 
       function bindScrollHandler() {
         $this.bind(eventClass('scroll'), function (e) {
-          updateGeometry();
+          //updateGeometry();
+          e.preventDefault();
         });
       }
 
